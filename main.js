@@ -87,80 +87,6 @@ var DLNA_Browser = function(options) {
         self.menu.setUseTextColors(value);
     });
 
-
-    // Determine how to call python
-    this.python = null;
-    var versions = ["python", "python3"];
-    var working_python = []
-    var upnp_errored = []
-
-    // If the .conf file specifies an option, test it first
-    if (options.python_version) {
-        versions.unshift(options.python_version);
-    }
-
-    // Test --version for each python call option
-    for (var i = 0; i < versions.length; i++) {
-        var result = mp.command_native({
-            name: "subprocess",
-            playback_only: false,
-            capture_stdout: true,
-            capture_stderr: true,
-            args : [versions[i], "--version"]
-        });
-       
-
-        if (result.status != 0) {
-            mp.msg.debug("calling python --version as " + versions[i] + " errored with: " + result.stderr);
-            continue;
-        } else {
-            working_python.push(versions[i]);
-        }
-    }
-
-    // test mpvDLNA.py for each working python call
-    for (var i = 0; i < working_python.length; i++) {
-        var result = mp.command_native({
-            name: "subprocess",
-            playback_only: false,
-            capture_stdout: true,
-            capture_stderr: true,
-            args : [working_python[i], mp.get_script_directory()+"/mpvDLNA.py", "-v"]
-        });
-
-        if (result.status != 0) {
-            mp.msg.debug("calling mpvDLNA.py using " + working_python[i] + " errored with: " + result.stderr);
-        } else if (result.stdout.search("upnp import failed") != -1) {
-            upnp_errored.push(working_python[i]);
-            mp.msg.debug("python call: " + working_python[i] + " does not have upnp installed correctly ");
-        } else {
-            this.python = working_python[i];
-            mp.msg.debug("selecting '" + working_python[i] + "' for python call")
-            break;
-        }
-    }
-
-    // None of the options worked, throw an error
-    if (working_python.length == 0) {
-        throw new Error("Unable to find a correctly configured python call: \n \
-        in the following options: " + versions +
-        "\n         Please add the name of your python install to the .conf file \n \
-        using the format: python_version=python \n \
-        or run mpv with the --msg-level=mpvDLNA=trace argument to see the errors");
-
-    // Some of the options worked but couldn't run mpvDLNA.py
-    } else if (this.python == null){
-        // upnpClient is not installed correctly
-        if (upnp_errored.length > 0) {
-            throw new Error("The following python calls exist but do not have upnpClient installed properly: " + versions);
-
-        // Some other error occured
-        } else {
-            throw new Error("The following python calls exist but failed to run mpvDLNA: " + versions +
-            "\n Please run mpv with the --msg-level=mpvDLNA=trace argument to see the errors");
-        }
-    }
-
     // How long to spend searching for DLNA servers
     this.timeout = options.timeout
 
@@ -313,10 +239,10 @@ DLNA_Browser.prototype.findDLNAServers = function() {
         playback_only: false,
         capture_stdout: true,
         capture_stderr: true,
-        args : [this.python, mp.get_script_directory()+"/mpvDLNA.py", "-l", this.timeout]
+        args : [mp.get_script_directory()+"/goDLNA/goDLNA", "-l", this.timeout]
     });
 
-    mp.msg.debug("mpvDLNA.py -l: " + result.stderr);
+    mp.msg.debug("goDLNA -l: " + result.stderr);
 
     // Get the output, delete the first element if empty, and remove trailing newlines
     var sp = removeNL(result.stdout.split("\n"));
@@ -998,20 +924,18 @@ DLNA_Browser.prototype.command_wake = function(args) {
             playback_only: false,
             capture_stdout: true,
             capture_stderr: true,
-            args : [this.python, mp.get_script_directory()+"/mpvDLNA.py", "-w", args[0]]
+            args : [mp.get_script_directory()+"/goDLNA/goDLNA", "-w", args[0]]
         });
 
-    mp.msg.debug("mpvDLNA.py -w: " + result.stderr);
+    mp.msg.debug("goDLNA -w: " + result.stderr);
 
     // Get the output, delete the first element if empty, and remove trailing newlines
     var sp = removeNL(result.stdout.split("\n"));
 
     if (sp[0] == "packet sent") {
         this.typing_output = "Packet Sent";
-    } else if (sp[0] == "wakeonlan import failed"){
-        this.typing_output = Ass.color("FF0000", true) + "wakeonlan python package not installed";
     } else {
-        this.typing_output = Ass.color("FF0000", true) + "unspecified error";
+        this.typing_output = Ass.color("FF0000", true) + "Not implemented yet";
     }
 }
 
@@ -1140,7 +1064,7 @@ DLNA_Browser.prototype.getChildren = function(selection) {
             playback_only: false,
             capture_stdout: true,
             capture_stderr: true,
-            args : [this.python, mp.get_script_directory()+"/mpvDLNA.py", "-b", this.parents[0].url, selection.id, this.count]
+            args : [mp.get_script_directory()+"/goDLNA/goDLNA", "-b", this.parents[0].url, selection.id, this.count]
         });
 
         var categories = result.stdout.split("\x1F")
@@ -1250,10 +1174,10 @@ DLNA_Browser.prototype.info = function(selection) {
             playback_only: false,
             capture_stdout: true,
             capture_stderr: true,
-            args : [this.python, mp.get_script_directory()+"/mpvDLNA.py", "-i", this.parents[0].url, selection.id, this.count]
+            args : [mp.get_script_directory()+"/goDLNA/goDLNA", "-i", this.parents[0].url, selection.id, this.count]
         });
 
-        mp.msg.debug("mpvDLNA.py -i: " + result.stderr);
+        mp.msg.debug("goDLNA -i: " + result.stderr);
 
         // Get the output, delete the first element if empty, and remove trailing newlines
         var sp = removeNL(result.stdout.split("\n"));
@@ -1359,7 +1283,6 @@ DLNA_Browser.prototype._registerCallbacks = function() {
         server_addrs: '',
         mac_addresses: '',
         startup_mac_addresses:'',
-        python_version: '',
         timeout: '1',
         count: '2000',
 
@@ -1390,7 +1313,6 @@ DLNA_Browser.prototype._registerCallbacks = function() {
             serverAddrs: userConfig.getMultiValue('server_addrs'),
             macAddresses: userConfig.getMultiValue('mac_addresses'),
             startupMacAddresses: userConfig.getMultiValue('startup_mac_addresses'),
-            python_version: userConfig.getValue('python_version'),
             timeout: userConfig.getValue('timeout'),
             count: userConfig.getValue('count'),
             keyRebindings: {
